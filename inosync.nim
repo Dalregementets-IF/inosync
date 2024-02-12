@@ -338,15 +338,15 @@ const
   gitHash {.strdefine.} = strip(gorge("git log -n 1 --format=%H"))
   gitDirty {.strdefine.} = gorge("git status --porcelain --untracked-files=no")
   actions = {
-    "kallelse": repKallelse,
-    "styrelse": repStyrelse,
-    "warn": repAlertWarn,
-    "info": repAlertInfo
+    "kallelse": (repKallelse, "toggle promobox with link to /kallelse.pdf"),
+    "styrelse": (repStyrelse, "create table rows from tsv file"),
+    "warn": (repAlertWarn, "toggle warning alert with text from file"),
+    "info": (repAlertInfo, "toggle info alert with text from file")
   }.toTable
 
 proc getAction(name: string): RepProc {.inline.} =
   if actions.hasKey(name):
-    result = actions[name]
+    result = actions[name][0]
   else:
     quit("unknown action: " & name, 100)
 
@@ -381,9 +381,9 @@ when isMainModule:
         printVer()
       of "l":
         var x: seq[string]
-        for k in actions.keys:
-          x.add k
-        quit("available actions: " & x.join(" "), QuitSuccess)
+        for k, v in actions.pairs:
+          x.add k & ": " & v[1]
+        quit("available actions:\n" & x.join("\n"), QuitSuccess)
       else:
         quit(progUse, EPERM)
     of cmdArgument:
