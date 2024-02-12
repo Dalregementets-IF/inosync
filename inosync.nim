@@ -230,13 +230,15 @@ proc repStyrelse(ifn: string, tfile: File): bool {.gcsafe.} =
       var
         fields = iline.split('\t')
         tmp: seq[string]
-      for part in fields[^1].split("<br>"):
+      while fields.len < 3:
+        fields.add ""
+      for part in fields[2].split("<br>"):
         if '@' in part:
           tmp.add "<a href=\"mailto:$1\" title=\"Mejla $2\">$1</a>" % [part, fields[0]]
         else:
           tmp.add part
-      fields[^1] = tmp.join("<br>")
-      let row = "<tr><td>" & fields.join("</td><td>") & "</td></tr>"
+      fields[2] = tmp.join("<br>")
+      let row = "<tr><td>" & fields[0..2].join("</td><td>") & "</td></tr>"
       tfile.writeLine row
   return true
 
