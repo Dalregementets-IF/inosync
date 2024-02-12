@@ -24,6 +24,8 @@ type
     queue: IntSet                ## pairs that are ready to receive work
     dirs: Table[string, WatchDir]
 
+var errno {.importc, header: "<errno.h>".}: int
+
 proc parentDir(path: string): string = string(parentDir(Path(path)))
 
 proc toString(event: uint32): string =
@@ -65,8 +67,6 @@ proc add(wl: var WatchList, infile, outfile: string, action: RepProc) =
     if not wl.dirs.hasKey(dir):
       wl.dirs[dir] = WatchDir(wd: -1, misses: 0)
     inc wl.dirs[dir].misses
-
-var errno {.importc, header: "<errno.h>".}: int
 
 proc replacer(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
   ## Replace data in file.
