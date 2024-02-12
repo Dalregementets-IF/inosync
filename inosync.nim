@@ -216,8 +216,8 @@ proc name(wl: WatchList, wd: FileHandle): string =
 
 proc repStyrelse(ifn: string, tfile: File): bool {.gcsafe.} =
   var ifile: File
-  if not open(ifile, $ifn, fmRead):
-    debug "could not open ifile: " & $ifn
+  if not open(ifile, ifn, fmRead):
+    debug "could not open ifile: " & ifn
     return false
   var iline: string
   block headers:
@@ -249,15 +249,15 @@ proc repKallelse(ifn: string, tfile: File): bool {.gcsafe.} =
   <a class="call-to-action" href="/kallelse.pdf" title="Läs kallelsen">Se kallelse</a>
 </div>
 """ % string(extractFilename(Path(ifn)))
-  if fileExists($ifn):
+  if fileExists(ifn):
     tfile.write html
   return true
 
 proc repAlert(ifn: string, tfile: File, class: string): bool {.gcsafe.} =
-  if fileExists($ifn):
+  if fileExists(ifn):
     var ifile: File
-    if not open(ifile, $ifn, fmRead):
-      debug "could not open ifile: " & $ifn
+    if not open(ifile, ifn, fmRead):
+      debug "could not open ifile: " & ifn
       return false
     tfile.write """<div class="alert $1">\n<p class="inner">\n""" % class
     var iline: string
