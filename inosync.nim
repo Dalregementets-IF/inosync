@@ -214,6 +214,10 @@ proc name(wl: WatchList, wd: FileHandle): string =
   else: result = "unknown"
 
 proc repStyrelse(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer specialized for creating styrelse.html <table> rows.
+  ## Enforces 3 fields. 1st field is expected to contain name, and 3rd field
+  ## contact information with <br> separation; contact info with '@' creates
+  ## mailto link. Rows starting with ';' or '#' are ignored.
   var ifile: File
   if not open(ifile, ifn, fmRead):
     debug "could not open ifile: " & ifn
@@ -243,6 +247,7 @@ proc repStyrelse(ifn: string, tfile: File): bool {.gcsafe.} =
   return true
 
 proc repKallelse(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer specialized for toggling promobox <div> with link to 'kallelse.pdf'
   let html = """
 <div id="interface_promobox_widget-2" class="widget widget_promotional_bar clearfix">
   <div class="promotional-text">Dags för årsmöte!<span>Läs kallelsen och anmäl dig nu!</span>
@@ -268,13 +273,16 @@ proc repAlert(ifn: string, tfile: File, class: string): bool {.gcsafe.} =
   return true
 
 proc repAlertWarn(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer for toggling warning alert.
   repAlert(ifn, tfile, "warning")
 
 proc repAlertInfo(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer for toggling info alert.
   repAlert(ifn, tfile, "info")
 
 var argsets: seq[(string, string, RepProc)]
 const toggles: array[3, RepProc] = [repKallelse,repAlertWarn,repAlertInfo]
+  ## Replacer procs that show or hide content based on if file `ifn` exists.
 
 proc main() =
   var wl = newWatchList()
