@@ -53,8 +53,7 @@ template debug(msg: string) =
 proc newWatchList(): WatchList =
   result.fd = inotify_init()
   if result.fd < 0:
-    echo "inotify_init failed"
-    quit(1)
+    quit("inotify_init failed, errno: " & $errno, errno)
 
 proc add(wl: var WatchList, infile, outfile: string, action: RepProc) =
   wl.pairs.add WatchPair(ifw: (name: infile, wd: -1),
