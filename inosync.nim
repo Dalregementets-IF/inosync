@@ -280,6 +280,18 @@ proc repAlertInfo(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer for toggling info alert.
   repAlert(ifn, tfile, "info")
 
+proc repPlain(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer simply writing lines to file as is.
+  if fileExists(ifn):
+    var ifile: File
+    if not open(ifile, ifn, fmRead):
+      debug "could not open ifile: " & ifn
+      return false
+    var iline: string
+    while ifile.readLine(iline):
+      tfile.writeLine iline
+  return true
+
 var argsets: seq[(string, string, RepProc)]
 const toggles: array[3, RepProc] = [repKallelse,repAlertWarn,repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.
@@ -341,7 +353,8 @@ const
     "kallelse": (repKallelse, "toggle promobox with link to /kallelse.pdf"),
     "styrelse": (repStyrelse, "create table rows from tsv file"),
     "warn": (repAlertWarn, "toggle warning alert with text from file"),
-    "info": (repAlertInfo, "toggle info alert with text from file")
+    "info": (repAlertInfo, "toggle info alert with text from file"),
+    "plain": (repPlain, "get plain text from file"),
   }.toTable
 
 proc getAction(name: string): RepProc {.inline.} =
