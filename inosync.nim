@@ -4,6 +4,7 @@ import std/private/osfiles
 
 const
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
+  watchMaskDir = IN_CREATE or IN_MOVED_TO
   beginMark = "<!-- INOSYNC BEGIN -->"
   endMark = "<!-- INOSYNC END -->"
 
@@ -142,7 +143,7 @@ proc watch(wl: var WatchList) =
   wl.incomplete = difference(wl.incomplete, completed)
   for k in wl.dirs.keys:
     if wl.dirs[k].wd < 0 and wl.dirs[k].misses > 0:
-      wl.dirs[k].wd = inotify_add_watch(wl.fd, cstring(k), IN_CREATE)
+      wl.dirs[k].wd = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
       if wl.dirs[k].wd == -1:
         quit("inotify_add_watch failed on directory: " & k & ", errno: " & $errno, errno)
       debug "new watch on dir: " & k
@@ -318,7 +319,7 @@ proc main() =
       if e[].mask == IN_IGNORED:
         continue
       debug "file: " & wl.name(e[].wd) & ", mask: " & e[].mask.toString
-      if e[].mask == IN_CREATE:
+      if e[].mask == IN_CREATE or e[].mask == IN_MOVED_TO:
         watch(wl)
         processQueue wl
       else:
