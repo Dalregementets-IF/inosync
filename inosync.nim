@@ -1,6 +1,7 @@
 import std / [inotify, intsets, parseopt, paths, posix, strutils, tables,
               tempfiles]
 import std/private/osfiles
+import seccomp
 
 const
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
@@ -28,6 +29,24 @@ type
 var errno {.importc, header: "<errno.h>".}: int
 
 proc parentDir(path: string): string = string(parentDir(Path(path)))
+
+proc lockdown() =
+  ## Allow only a subset of syscalls.
+  let ctx = seccomp_ctx()
+  ctx.add_rule(Allow, "read")
+  ctx.add_rule(Allow, "write")
+  ctx.add_rule(Allow, "close")
+  ctx.add_rule(Allow, "rename")
+  ctx.add_rule(Allow, "unlink")
+  ctx.add_rule(Allow, "newfstatat")
+  ctx.add_rule(Allow, "exit_group")
+  ctx.add_rule(Allow, "inotify_add_watch")
+  ctx.add_rule(Allow, "inotify_rm_watch")
+  ctx.add_rule(Allow, "openat")
+  ctx.add_rule(Allow, "lseek")
+  ctx.add_rule(Allow, "getrandom")
+  ctx.add_rule(Allow, "fcntl")
+  ctx.load()
 
 proc toString(event: uint32): string =
   case event
@@ -305,6 +324,7 @@ proc main() =
   `=destroy`(argsets)
   debug $wl
 
+  lockdown()
   watch wl
   for i in 0..wl.pairs.high:
     # Process toggle-types even if pair is incomplete
