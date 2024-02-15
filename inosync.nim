@@ -1,7 +1,20 @@
-import std / [inotify, intsets, osproc, parseopt, paths, posix, strutils,
-              tables, tempfiles]
+import std / [inotify, intsets, parseopt, paths, posix, strutils, tables,
+              tempfiles]
 import std/private/osfiles
 import seccomp
+
+{.passL: "`pkg-config --libs poppler-glib`".}
+when defined(useFuthark) or defined(useFutharkForPoppler):
+  import futhark
+  importc:
+    path "/usr/include/poppler"
+    path "/usr/include/glib-2.0"
+    compilerarg "`pkg-config --cflags poppler-glib`"
+    "poppler.h"
+    "glib.h"
+    outputPath currentSourcePath.parentDir / "futhark_poppler.nim"
+else:
+  include "futhark_poppler.nim"
 
 const
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
@@ -46,38 +59,21 @@ proc lockdown() =
   ctx.add_rule(Allow, "lseek")
   ctx.add_rule(Allow, "getrandom")
   ctx.add_rule(Allow, "fcntl")
-  # execCmd
-  ctx.add_rule(Allow, "pipe2")
-  ctx.add_rule(Allow, "clone")
-  ctx.add_rule(Allow, "ioctl")
-  ctx.add_rule(Allow, "wait4")
-  # child pdfgrep
+  # Poppler
+  ctx.add_rule(Allow, "fstat")
+  ctx.add_rule(Allow, "brk")
   ctx.add_rule(Allow, "mmap")
   ctx.add_rule(Allow, "munmap")
-  ctx.add_rule(Allow, "pread64")
   ctx.add_rule(Allow, "mprotect")
-  ctx.add_rule(Allow, "brk")
   ctx.add_rule(Allow, "getdents64")
-  ctx.add_rule(Allow, "prlimit64")
-  ctx.add_rule(Allow, "rseq")
-  ctx.add_rule(Allow, "arch_prctl")
-  ctx.add_rule(Allow, "set_tid_address")
-  ctx.add_rule(Allow, "set_robust_list")
-  ctx.add_rule(Allow, "access")
-  ctx.add_rule(Allow, "dup2")
-  ctx.add_rule(Allow, "execve")
+  ctx.add_rule(Allow, "pread64")
   ctx.add_rule(Allow, "futex")
-  ctx.add_rule(Allow, "getpid")
-  ctx.add_rule(Allow, "getppid")
-  ctx.add_rule(Allow, "getpgrp")
-  ctx.add_rule(Allow, "getuid")
-  ctx.add_rule(Allow, "getgid")
-  ctx.add_rule(Allow, "geteuid")
-  ctx.add_rule(Allow, "getegid")
-  ctx.add_rule(Allow, "rt_sigprocmask")
-  ctx.add_rule(Allow, "sysinfo")
-  ctx.add_rule(Allow, "rt_sigaction")
-  ctx.add_rule(Allow, "uname")
+  # Alpine Linux
+  ctx.add_rule(Allow, "writev")
+  ctx.add_rule(Allow, "readv")
+  ctx.add_rule(Allow, "open")
+  ctx.add_rule(Allow, "ioctl")
+  ctx.add_rule(Allow, "lstat")
   ctx.load()
 
 proc toString(event: uint32): string =
@@ -300,30 +296,40 @@ proc repStyrelse(ifn: string, tfile: File): bool {.gcsafe.} =
 
 proc repKallelse(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for toggling promobox <div> with link to 'kallelse.pdf'
-  if fileExists(ifn):
-    let cmd = "pdfgrep -iP 'Kallelse|Mötet' --color never -m2 " & ifn
-    var
-      title = "Dags för årsmöte!"
-      desc = "Läs kallelsen och anmäl dig nu!"
-    debug "executing command: " & cmd
-    let res = execCmdEx(cmd, {poUsePath})
-    if res.exitCode != 0:
-      debug "external command 'pdfgrep' failed: " & $res.exitCode & res.output
-      quit(1)
-    else:
-      let lines = res.output.split('\n')
-      title = strip(lines[0])
-      if lines.len > 1:
-        desc = strip(lines[1])
-    let html = """
+  const
+    dTitle = "Dags för årsmöte!"
+    dDesc = "Läs kallelsen och anmäl dig nu!"
+  var
+    error: ptr structgerror
+    doc = popplerdocumentnewfromfile(cstring("file:" & ifn), cstring(""), addr error)
+  if doc.isNil:
+    echo "failed to load PDF: " & $error.message
+    gerrorfree(error)
+    return false
+  defer: gobjectunref(doc)
+
+  var page = poppler_document_get_page(doc, 0)
+  defer: gobjectunref(page)
+  var
+    title, desc: string
+    text = popplerpagegettext(page)
+  defer: gfree(text)
+  for line in split($text, '\n'):
+    if title == "" and "Kallelse" in line:
+      title = line
+    elif desc == "" and "Mötet" in line:
+      desc = line
+    if title != "" and desc != "":
+      break
+  let html = """
 <div id="interface_promobox_widget-2" class="widget widget_promotional_bar clearfix">
   <div class="promotional-text">$1<span>$2</span>
   </div>
   <a class="call-to-action" href="/kallelse.pdf" title="Läs kallelsen">Se kallelse</a>
 </div>
-""" % [title, desc]
-    tfile.write html
-    return true
+""" % [if title != "": title else: dTitle, if desc != "": desc else: dDesc]
+  tfile.write html
+  return true
 
 proc repAlert(ifn: string, tfile: File, class: string): bool {.gcsafe.} =
   if fileExists(ifn):
