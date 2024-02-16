@@ -5,6 +5,7 @@ import seccomp
 
 {.passL: "`pkg-config --libs poppler-glib`".}
 when defined(useFuthark) or defined(useFutharkForPoppler):
+  import os
   import futhark
   importc:
     path "/usr/include/poppler"
