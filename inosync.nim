@@ -306,7 +306,7 @@ proc repKallelse(ifn: string, tfile: File): bool {.gcsafe.} =
   if doc.isNil:
     echo "failed to load PDF: " & $error.message
     gerrorfree(error)
-    return false
+    return true
   defer: gobjectunref(doc)
 
   var page = poppler_document_get_page(doc, 0)
