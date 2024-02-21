@@ -65,6 +65,7 @@ proc lockdown() =
   ctx.add_rule(Allow, "brk")
   ctx.add_rule(Allow, "mmap")
   ctx.add_rule(Allow, "munmap")
+  ctx.add_rule(Allow, "mremap")
   ctx.add_rule(Allow, "mprotect")
   ctx.add_rule(Allow, "getdents64")
   ctx.add_rule(Allow, "pread64")
