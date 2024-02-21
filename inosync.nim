@@ -309,7 +309,10 @@ proc repKallelse(ifn: string, tfile: File): bool {.gcsafe.} =
     error: ptr structgerror
     doc = popplerdocumentnewfromfile(cstring("file:" & ifn), cstring(""), addr error)
   if doc.isNil:
-    echo "failed to load PDF: " & $error.message
+    # `PDF document is damaged` also falls under G_FILE_ERROR_NOENT (code 4)
+    # but missing file is expected.
+    if error.code != 4 and error.message != "No such file or directory":
+      echo "failed to load PDF: " & $error.message & ", [" & $ $error.code & "]"
     gerrorfree(error)
     return true
   defer: gobjectunref(doc)
