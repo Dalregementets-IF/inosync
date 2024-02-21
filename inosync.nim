@@ -60,6 +60,10 @@ proc lockdown() =
   ctx.add_rule(Allow, "lseek")
   ctx.add_rule(Allow, "getrandom")
   ctx.add_rule(Allow, "fcntl")
+  ctx.add_rule(Allow, "rt_sigaction")
+  ctx.add_rule(Allow, "rt_sigprocmask")
+  ctx.add_rule(Allow, "rt_sigreturn")
+  ctx.add_rule(Allow, "tkill")
   # Poppler
   ctx.add_rule(Allow, "fstat")
   ctx.add_rule(Allow, "brk")
