@@ -8,6 +8,7 @@ bin           = @["inosync"]
 # Dependencies
 requires "nim >= 2.0.2"
 requires "seccomp >= 0.2.1"
+requires "nmark >= 0.1.10"
 
 # Tasks
 task debug, "Create a debug build":

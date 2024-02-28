@@ -1,6 +1,7 @@
 import std / [inotify, intsets, parseopt, paths, posix, strutils, tables,
               tempfiles]
 import std/private/osfiles
+import nmark
 
 {.passL: "`pkg-config --libs poppler-glib`".}
 when defined(useFuthark) or defined(useFutharkForPoppler):
@@ -374,6 +375,17 @@ proc repPlain(ifn: string, tfile: File): bool {.gcsafe.} =
       tfile.writeLine iline
   return true
 
+proc repMarkdown(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer creating HTML from markdown and writing it to file.
+  if fileExists(ifn):
+    var ifile: File
+    if not open(ifile, ifn, fmRead):
+      debug "could not open ifile: " & ifn
+      return false
+    let md = readAll ifile
+    tfile.write markdown(md)
+  return true
+
 var argsets: seq[(string, string, RepProc)]
 const toggles: array[3, RepProc] = [repKallelse,repAlertWarn,repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.
@@ -438,6 +450,7 @@ const
     "styrelse": (repStyrelse, "create table rows from tsv file"),
     "warn": (repAlertWarn, "toggle warning alert with text from file"),
     "info": (repAlertInfo, "toggle info alert with text from file"),
+    "markdown": (repMarkdown, "create html from markdown file"),
     "plain": (repPlain, "get plain text from file"),
   }.toTable
 
