@@ -414,25 +414,24 @@ proc main() =
       if e[].mask == IN_IGNORED:
         continue
       debug "file: " & wl.name(e[].wd) & ", mask: " & e[].mask.toString
-      if e[].mask == IN_CREATE or e[].mask == IN_MOVED_TO:
+      if e[].wd in wl.map:
+        if e[].mask == IN_MODIFY:
+          let i = wl.map[e[].wd]
+          if i notin wl.incomplete:
+            wl.queue.incl i
+          elif wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
+            wl.queue.incl i
+          processQueue wl
+        elif e[].mask == IN_DELETE_SELF or e[].mask == IN_MOVE_SELF:
+          let i = wl.map[e[].wd]
+          wl.purge e[].wd
+          watch wl
+          if wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
+            wl.queue.incl i
+          processQueue wl
+      elif e[].mask == IN_CREATE or e[].mask == IN_MOVED_TO or e[].mask == IN_MOVE_SELF:
         watch(wl)
         processQueue wl
-      else:
-        if e[].wd in wl.map:
-          if e[].mask == IN_MODIFY:
-            let i = wl.map[e[].wd]
-            if i notin wl.incomplete:
-              wl.queue.incl i
-            elif wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
-              wl.queue.incl i
-            processQueue wl
-          elif e[].mask == IN_DELETE_SELF or e[].mask == IN_MOVE_SELF:
-            let i = wl.map[e[].wd]
-            wl.purge e[].wd
-            watch wl
-            if wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
-              wl.queue.incl i
-            processQueue wl
     debug $wl
 
 const
