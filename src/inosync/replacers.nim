@@ -1,4 +1,4 @@
-import std / [strutils, tempfiles]
+import std / [strutils, tables, tempfiles]
 import std/private/osfiles
 import nmark
 
@@ -20,10 +20,27 @@ else:
 
 type RepProc* = proc (ifn: string, tfile: File): bool {.gcsafe, nimcall.}
 
+{.experimental: "codeReordering".}
+
 const
   pictograms = ["unknown", "weightlifting", "biathlon", "modern_pentathlon",
                 "fencing", "athletics", "shooting", "cross_country_skiing",
                 "swimming", "triathlon"]
+  actions* = {
+    "kallelse": (repKallelse, "toggle promobox with link to /kallelse.pdf"),
+    "styrelse": (repStyrelse, "create table rows from tsv file"),
+    "tavlingar": (repTavlingar, "create rows of divs from tsv file"),
+    "warn": (repAlertWarn, "toggle warning alert with text from file"),
+    "info": (repAlertInfo, "toggle info alert with text from file"),
+    "markdown": (repMarkdown, "create html from markdown file"),
+    "plain": (repPlain, "get plain text from file"),
+  }.toOrderedTable
+
+proc getAction*(name: string): RepProc {.inline.} =
+  if actions.hasKey(name):
+    result = actions[name][0]
+  else:
+    quit("unknown action: " & name, 100)
 
 proc getPictogram(sport: string): string =
   case toLower(sport)
@@ -251,5 +268,5 @@ proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
       tfile.writeLine item
   return true
 
-const toggles*: array[3, RepProc] = [repKallelse,repAlertWarn,repAlertInfo]
+const toggles*: array[3, RepProc] = [repKallelse, repAlertWarn, repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.

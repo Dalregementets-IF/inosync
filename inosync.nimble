@@ -11,6 +11,7 @@ bin           = @["inosync"]
 requires "nim >= 2.0.2"
 requires "seccomp >= 0.2.1"
 requires "nmark >= 0.1.10"
+requires "cligen >= 1.7.0 & < 2.0.0"
 
 # Tasks
 task debug, "Create a debug build":

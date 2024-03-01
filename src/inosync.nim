@@ -1,4 +1,4 @@
-import std / [inotify, intsets, parseopt, paths, posix, strutils, tables]
+import std / [inotify, intsets, paths, posix, strutils, tables]
 import inosync / [misc, replacers, sc]
 
 const
@@ -138,7 +138,26 @@ proc name(wl: WatchList, wd: FileHandle): string =
 
 var argsets: seq[(string, string, RepProc)]
 
-proc main() =
+proc run(list = false; args: seq[string]): int =
+  if list:
+    var x: seq[string]
+    for k, v in actions.pairs:
+      x.add k & ": " & v[1]
+    echo "available actions:\n" & x.join("\n")
+    return
+
+  if args.len < 1:
+    echo "nothing to do"
+    return
+
+  for arg in args:
+    let x = arg.split(',')
+    if x.len != 3:
+      echo "arguments must be in format '<action>,<path>,<path>' with exactly two ','"
+      return 100
+    let act = getAction(x[0])
+    argsets.add (x[1], x[2], act)
+
   var wl = newWatchList()
   for p in argsets.items:
     debug "adding: " & $p[0] & "->" & $p[1]
@@ -181,73 +200,29 @@ proc main() =
         processQueue wl
     debug $wl
 
-const
-  progName = "inosync"
-  progUse = progName & " [-h][-v][-l] [action,path,path ..]"
-  progHelp = progUse & "\n" & """
-  -l  list available actions
-  -h  show this help
-  -v  show version"""
-  progVer {.strdefine.} = strip(gorge("git tag -l --sort=version:refname '*.*.*' | tail -n1"))
-  gitHash {.strdefine.} = strip(gorge("git log -n 1 --format=%H"))
-  gitDirty {.strdefine.} = gorge("git status --porcelain --untracked-files=no")
-  actions = {
-    "kallelse": (repKallelse, "toggle promobox with link to /kallelse.pdf"),
-    "styrelse": (repStyrelse, "create table rows from tsv file"),
-    "tavlingar": (repTavlingar, "create rows of divs from tsv file"),
-    "warn": (repAlertWarn, "toggle warning alert with text from file"),
-    "info": (repAlertInfo, "toggle info alert with text from file"),
-    "markdown": (repMarkdown, "create html from markdown file"),
-    "plain": (repPlain, "get plain text from file"),
-  }.toOrderedTable
+when isMainModule:
+  import cligen
 
-proc getAction(name: string): RepProc {.inline.} =
-  if actions.hasKey(name):
-    result = actions[name][0]
-  else:
-    quit("unknown action: " & name, 100)
+  const
+    progName = "inosync"
+    progUse = progName & " [optional-params] [action,path,path ...]"
+    progVer {.strdefine.} = strip(gorge("git tag -l --sort=version:refname '*.*.*' | tail -n1"))
+    gitHash {.strdefine.} = strip(gorge("git log -n 1 --format=%H"))
+    gitDirty {.strdefine.} = gorge("git status --porcelain --untracked-files=no")
 
-proc printVer*() {.inline.} =
-  ## Print version information and exit.
   let dirty =
     if gitDirty != "":
       " (dirty)\n" & gitDirty
     else:
       ""
-  quit("""$1 $2
+  clCfg.version = """$1 $2
 Compiled at $3 $4
 Written by Tobias Dély
 
-git hash: $5$6""" % [progName, progVer, CompileDate, CompileTime, gitHash, dirty], QuitSuccess)
+git hash: $5$6""" % [progName, progVer, CompileDate, CompileTime, gitHash, dirty]
 
-when isMainModule:
-  var p = initOptParser()
-  while true:
-    next p
-    case p.kind
-    of cmdEnd:
-      if argsets.len < 1:
-        quit("nothing to do", QuitSuccess)
-      main()
-      break
-    of cmdShortOption:
-      case p.key:
-      of "h":
-        quit(progHelp, QuitSuccess)
-      of "v":
-        printVer()
-      of "l":
-        var x: seq[string]
-        for k, v in actions.pairs:
-          x.add k & ": " & v[1]
-        quit("available actions:\n" & x.join("\n"), QuitSuccess)
-      else:
-        quit(progUse, EPERM)
-    of cmdArgument:
-      let x = p.key.split(',')
-      if x.len != 3:
-        quit("arguments must be in format '<action>,<path>,<path>' with exactly two ','", 100)
-      let act = getAction(x[0])
-      argsets.add (x[1], x[2], act)
-    else:
-      quit(progUse, EPERM)
+  dispatchCf run, cmdName = progName, cf = clCfg, noHdr = true,
+    usage = progUse & "\n\nOptions(opt-arg sep :|=|spc):\n$options",
+    help = {
+      "list": "list available actions"
+    }
