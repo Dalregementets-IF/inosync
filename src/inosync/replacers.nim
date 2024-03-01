@@ -253,7 +253,7 @@ proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
         item = """
   <div class="competition-row">
     <div>
-      <h2><img src="/img/pictograms/$7_pictogram-35.webp"><a href="$6" target="_blank">$1</a></h2>
+      <h2><div class="pictogram pg-$7"></div><a href="$6" target="_blank">$1</a></h2>
       <span>$2, $3</span>
     </div>
     <div>
