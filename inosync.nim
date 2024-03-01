@@ -22,6 +22,34 @@ const
   watchMaskDir = IN_CREATE or IN_MOVED_TO
   beginMark = "<!-- INOSYNC BEGIN -->"
   endMark = "<!-- INOSYNC END -->"
+  pictograms = ["unknown", "weightlifting", "biathlon", "modern_pentathlon",
+                "fencing", "athletics", "shooting", "cross_country_skiing",
+                "swimming", "triathlon"]
+
+proc getPictogram(sport: string): string =
+  case toLower(sport)
+  of "atlet", "tyngdlyftning":
+    pictograms[1]
+  of "biathlon", "skidskytte":
+    pictograms[2]
+  of "femkamp", "m5k", "modern femkamp", "pentathlon":
+    pictograms[3]
+  of "fäktning":
+    pictograms[4]
+  of "löpning":
+    pictograms[5]
+  of "ol-skytte", "orienteringsskytte":
+    pictograms[6]
+  of "skidor", "längdskidor":
+    pictograms[7]
+  of "simning":
+    pictograms[8]
+  of "triathlon":
+    pictograms[9]
+  else:
+    pictograms[0]
+
+assert pictograms.len >= 10
 
 type
   RepProc = proc (ifn: string, tfile: File): bool {.gcsafe, nimcall.}
@@ -386,6 +414,40 @@ proc repMarkdown(ifn: string, tfile: File): bool {.gcsafe.} =
     tfile.write markdown(md)
   return true
 
+proc repTavlingar(ifn: string, tfile: File): bool {.gcsafe.} =
+  ## Replacer specialized for creating tavlingar.html <div> sets.
+  ## Enforces 6 fields.
+  var ifile: File
+  if not open(ifile, ifn, fmRead):
+    debug "could not open ifile: " & ifn
+    return false
+  var iline: string
+  while ifile.readLine(iline):
+    if not iline.startsWith("#") and not iline.startsWith(";") and iline != "":
+      var
+        fields = iline.split('\t')
+      while fields.len < 3:
+        fields.add ""
+      let
+        pic = getPictogram(fields[3])
+        item = """
+  <div class="competition-row">
+    <div>
+      <h2><img src="/img/pictograms/$7_pictogram-35.webp"><a href="$6" target="_blank">$1</a></h2>
+      <span>$2, $3</span>
+    </div>
+    <div>
+      <p>
+        <b>Sport</b>: $4<br>
+        <b>Klasser</b>: $5<br>
+        <a href="$6" target="_blank" class="button" title="Gå till extern webbplats">Mer information</a>
+      </p>
+    </div>
+  </div>
+""" % [fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], pic]
+      tfile.writeLine item
+  return true
+
 var argsets: seq[(string, string, RepProc)]
 const toggles: array[3, RepProc] = [repKallelse,repAlertWarn,repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.
@@ -447,6 +509,7 @@ const
   actions = {
     "kallelse": (repKallelse, "toggle promobox with link to /kallelse.pdf"),
     "styrelse": (repStyrelse, "create table rows from tsv file"),
+    "tavlingar": (repTavlingar, "create rows of divs from tsv file"),
     "warn": (repAlertWarn, "toggle warning alert with text from file"),
     "info": (repAlertInfo, "toggle info alert with text from file"),
     "markdown": (repMarkdown, "create html from markdown file"),
