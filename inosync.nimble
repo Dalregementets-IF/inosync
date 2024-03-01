@@ -3,6 +3,8 @@ version       = "1.1.0"
 author        = "Tobias Dély"
 description   = "monitor pairs of in/out files and sync data according to given action"
 license       = "MIT"
+srcDir        = "src"
+binDir        = "bin"
 bin           = @["inosync"]
 
 # Dependencies
@@ -12,13 +14,17 @@ requires "nmark >= 0.1.10"
 
 # Tasks
 task debug, "Create a debug build":
-  exec "nim c --lineDir:on --debuginfo:on --debugger:native -d:useMalloc -d:noseccomp inosync.nim"
+  exec "mkdir -p bin"
+  exec "nim c --lineDir:on --debuginfo:on --debugger:native -d:useMalloc -d:noseccomp -o:bin/inosync src/inosync.nim"
 
 task futhark, "Build/rebuild futhark wrappers":
-  exec "nim c -d:useFuthark -d:futharkRebuild --maxLoopIterationsVM:50000000 --cc:clang inosync.nim"
+  exec "mkdir -p bin"
+  exec "nim c -d:useFuthark -d:futharkRebuild --maxLoopIterationsVM:50000000 --cc:clang -o:bin/inosync src/inosync.nim"
 
 task build, "Create a development build":
-  exec "nim c -d:noseccomp inosync.nim"
+  exec "mkdir -p bin"
+  exec "nim c -d:noseccomp -o:bin/inosync src/inosync.nim"
 
 task release, "Build for release":
-  exec "nim c -d:release -d:danger --opt:speed -d:useMalloc inosync.nim"
+  exec "mkdir -p bin"
+  exec "nim c -d:release -d:danger --opt:speed -d:useMalloc -o:bin/inosync src/inosync.nim"
