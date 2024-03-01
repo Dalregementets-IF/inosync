@@ -514,7 +514,7 @@ const
     "info": (repAlertInfo, "toggle info alert with text from file"),
     "markdown": (repMarkdown, "create html from markdown file"),
     "plain": (repPlain, "get plain text from file"),
-  }.toTable
+  }.toOrderedTable
 
 proc getAction(name: string): RepProc {.inline.} =
   if actions.hasKey(name):
