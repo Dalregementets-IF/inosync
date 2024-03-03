@@ -134,9 +134,8 @@ proc name(wl: WatchList, wd: FileHandle): string =
     for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
       if fw.wd == wd:
         return $fw.name
-  else: result = "unknown"
-
-var argsets: seq[(string, string, RepProc)]
+  else:
+    result = "unknown"
 
 proc run(list = false; args: seq[string]): int =
   if list:
@@ -150,20 +149,20 @@ proc run(list = false; args: seq[string]): int =
     echo "nothing to do"
     return
 
-  for arg in args:
-    let x = arg.split(',')
-    if x.len != 3:
-      echo "arguments must be in format '<action>,<path>,<path>' with exactly two ','"
-      return 100
-    let act = getAction(x[0])
-    argsets.add (x[1], x[2], act)
-
   var wl = newWatchList()
-  for p in argsets.items:
-    debug "adding: " & $p[0] & "->" & $p[1]
-    wl.add(p[0], p[1], p[2])
-  `=destroy`(argsets)
-  debug $wl
+  block process_args:
+    var argsets: seq[(string, string, RepProc)]
+    for arg in args:
+      let x = arg.split(',')
+      if x.len != 3:
+        echo "arguments must be in format '<action>,<path>,<path>' with exactly two ','"
+        return 100
+      let act = getAction(x[0])
+      argsets.add (x[1], x[2], act)
+    for p in argsets.items:
+      debug "adding: " & $p[0] & "->" & $p[1]
+      wl.add(p[0], p[1], p[2])
+    debug $wl
 
   lockdown()
   watch wl
@@ -183,9 +182,8 @@ proc run(list = false; args: seq[string]): int =
       if e[].wd in wl.map:
         if e[].mask == IN_MODIFY:
           let i = wl.map[e[].wd]
-          if i notin wl.incomplete:
-            wl.queue.incl i
-          elif wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
+          if i notin wl.incomplete or
+              (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
             wl.queue.incl i
           processQueue wl
         elif e[].mask == IN_DELETE_SELF or e[].mask == IN_MOVE_SELF:
