@@ -1,4 +1,4 @@
-import std / [inotify, intsets, paths, posix, strutils, tables]
+import std / [inotify, intsets, paths, posix, strformat, strutils, tables]
 import inosync / [misc, replacers, sc]
 
 const
@@ -141,8 +141,8 @@ proc run(list = false; args: seq[string]): int =
   if list:
     var x: seq[string]
     for k, v in actions.pairs:
-      x.add k & ": " & v[1]
-    echo "available actions:\n" & x.join("\n")
+      x.add fmt"{k:<12} {v[1]}"
+    echo "available actions:\n  " & x.join("\n  ")
     return
 
   if args.len < 1:
