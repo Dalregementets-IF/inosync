@@ -203,7 +203,7 @@ when isMainModule:
 
   const
     progName = "inosync"
-    progUse = progName & " [optional-params] [action,path,path ...]"
+    progUse = progName & " [optional-params] [action,src,dest ...]"
     progVer {.strdefine.} = strip(gorge("git tag -l --sort=version:refname '*.*.*' | tail -n1"))
     gitHash {.strdefine.} = strip(gorge("git log -n 1 --format=%H"))
     gitDirty {.strdefine.} = gorge("git status --porcelain --untracked-files=no")
