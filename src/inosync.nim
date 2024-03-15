@@ -1,5 +1,11 @@
-import std / [inotify, intsets, paths, posix, strformat, strutils, tables]
+import std / [bitops, inotify, intsets, paths, posix, strformat, strutils,
+              tables]
 import inosync / [misc, replacers, sc]
+
+proc inmask[T: SomeInteger](mask: T, events: varargs[T]): bool =
+  for y in events:
+    if bitand(mask, y) == y:
+      return true
 
 const
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
@@ -176,7 +182,8 @@ proc run(list = false; args: seq[string]): int =
   var evs = newSeq[byte](8192)
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
     for e in inotify_events(evs[0].addr, n):
-      if e[].mask == IN_IGNORED:
+      if inmask(e[].mask, IN_IGNORED):
+        debug e[].mask.toString
         continue
       debug "file: " & wl.name(e[].wd) & ", mask: " & e[].mask.toString
       if e[].wd in wl.map:
@@ -186,14 +193,14 @@ proc run(list = false; args: seq[string]): int =
               (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
             wl.queue.incl i
           processQueue wl
-        elif e[].mask == IN_DELETE_SELF or e[].mask == IN_MOVE_SELF:
+        elif inmask(e[].mask, IN_DELETE_SELF, IN_MOVE_SELF):
           let i = wl.map[e[].wd]
           wl.purge e[].wd
           watch wl
           if wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
             wl.queue.incl i
           processQueue wl
-      elif e[].mask == IN_CREATE or e[].mask == IN_MOVED_TO or e[].mask == IN_MOVE_SELF:
+      elif inmask(e[].mask, IN_CREATE, IN_MOVED_TO, IN_MOVE_SELF):
         watch(wl)
         processQueue wl
     debug $wl
