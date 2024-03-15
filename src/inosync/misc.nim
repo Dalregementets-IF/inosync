@@ -1,27 +1,31 @@
-import std/inotify
+import std / [bitops, inotify]
 
 const
   beginMark* = "<!-- INOSYNC BEGIN -->"
   endMark* = "<!-- INOSYNC END -->"
 
+proc inmask*[T: SomeInteger](mask: T, events: varargs[T]): bool =
+  for y in events:
+    if bitand(mask, y) == y:
+      return true
+
 proc toString*(event: uint32): string =
-  case event
-  of IN_ACCESS: "IN_ACCESS"
-  of IN_MODIFY: "IN_MODIFY"
-  of IN_ATTRIB: "IN_ATTRIB"
-  of IN_CLOSE_WRITE: "IN_CLOSE_WRITE"
-  of IN_CLOSE_NOWRITE: "IN_CLOSE_NOWRITE"
-  of IN_OPEN: "IN_OPEN"
-  of IN_MOVED_FROM: "IN_MOVED_FROM"
-  of IN_MOVED_TO: "IN_MOVED_TO"
-  of IN_CREATE: "IN_CREATE"
-  of IN_DELETE: "IN_DELETE"
-  of IN_DELETE_SELF: "IN_DELETE_SELF"
-  of IN_MOVE_SELF: "IN_MOVE_SELF"
-  of IN_ISDIR: "IN_ISDIR"
-  of IN_UNMOUNT: "IN_UNMOUNT"
-  of IN_Q_OVERFLOW: "IN_Q_OVERFLOW"
-  of IN_IGNORED: "IN_IGNORED"
+  if inmask(event, IN_ACCESS): "IN_ACCESS"
+  elif inmask(event, IN_MODIFY): "IN_MODIFY"
+  elif inmask(event, IN_ATTRIB): "IN_ATTRIB"
+  elif inmask(event, IN_CLOSE_WRITE): "IN_CLOSE_WRITE"
+  elif inmask(event, IN_CLOSE_NOWRITE): "IN_CLOSE_NOWRITE"
+  elif inmask(event, IN_OPEN): "IN_OPEN"
+  elif inmask(event, IN_MOVED_FROM): "IN_MOVED_FROM"
+  elif inmask(event, IN_MOVED_TO): "IN_MOVED_TO"
+  elif inmask(event, IN_CREATE): "IN_CREATE"
+  elif inmask(event, IN_DELETE): "IN_DELETE"
+  elif inmask(event, IN_DELETE_SELF): "IN_DELETE_SELF"
+  elif inmask(event, IN_MOVE_SELF): "IN_MOVE_SELF"
+  elif inmask(event, IN_ISDIR): "IN_ISDIR"
+  elif inmask(event, IN_UNMOUNT): "IN_UNMOUNT"
+  elif inmask(event, IN_Q_OVERFLOW): "IN_Q_OVERFLOW"
+  elif inmask(event, IN_IGNORED): "IN_IGNORED"
   else: "UNKNOWN[" & $event & "]"
 
 template debug*(msg: string) =

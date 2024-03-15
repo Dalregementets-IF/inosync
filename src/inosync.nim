@@ -1,11 +1,5 @@
-import std / [bitops, inotify, intsets, paths, posix, strformat, strutils,
-              tables]
+import std / [inotify, intsets, paths, posix, strformat, strutils, tables]
 import inosync / [misc, replacers, sc]
-
-proc inmask[T: SomeInteger](mask: T, events: varargs[T]): bool =
-  for y in events:
-    if bitand(mask, y) == y:
-      return true
 
 const
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
