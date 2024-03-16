@@ -10,16 +10,13 @@ type
     ifw: tuple[name: string, wd: FileHandle = -1]
     ofw: tuple[name: string, wd: FileHandle = -1]
     action: RepProc
-  WatchDir = object
-    wd: FileHandle = -1
-    misses: int  ## counter for unwatched files in the directory
   WatchList = object
     fd: cint                     ## inotify
     pairs: seq[WatchPair]
     map: Table[FileHandle, int]  ## wd to pairs index
     incomplete: IntSet           ## incomplete pairs (has unwatched file)
     queue: IntSet                ## pairs that are ready to receive work
-    dirs: Table[string, WatchDir]
+    dirs: Table[string, FileHandle]
 
 var errno* {.importc, header: "<errno.h>".}: int
 
@@ -38,8 +35,7 @@ proc add(wl: var WatchList, infile, outfile: string, action: RepProc) =
   for fw in [wl.pairs[^1].ifw, wl.pairs[^1].ofw]:
     let dir = parentDir(fw.name)
     if not wl.dirs.hasKey(dir):
-      wl.dirs[dir] = WatchDir(wd: -1, misses: 0)
-    inc wl.dirs[dir].misses
+      wl.dirs[dir] = -1
 
 proc watch(wl: var WatchList) =
   ## Attempt to add inotify watch on any unwatched files and the dirs of any
@@ -54,7 +50,6 @@ proc watch(wl: var WatchList) =
         if fw.wd >= 0:
           debug "new watch: " & $fw.name & ", " & $fw.wd
           wl.map[fw.wd] = i
-          dec wl.dirs[parentDir(fw.name)].misses
         else:
           debug "could not watch: " & $fw.name & ", " & $fw.wd & ", errno: " & $errno
       else:
@@ -64,38 +59,24 @@ proc watch(wl: var WatchList) =
   wl.queue = union(wl.queue, completed)
   wl.incomplete = difference(wl.incomplete, completed)
   for k in wl.dirs.keys:
-    if wl.dirs[k].wd < 0 and wl.dirs[k].misses > 0:
-      wl.dirs[k].wd = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
-      if wl.dirs[k].wd == -1:
+    if wl.dirs[k] == -1:
+      wl.dirs[k] = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
+      if wl.dirs[k] == -1:
         quit("inotify_add_watch failed on directory: " & k & ", errno: " & $errno, errno)
       debug "new watch on dir: " & k
-    elif wl.dirs[k].wd >= 0 and wl.dirs[k].misses <= 0:
-      if inotify_rm_watch(wl.fd, wl.dirs[k].wd) < 0:
-        quit("could not remove watch on directory: " & k & ", errno: " & $errno, errno)
-      else:
-        debug "removed watch on directory: " & k & ", " & $wl.dirs[k].misses
-        wl.dirs[k].wd = -1
 
 proc purge(wl: var WatchList, wd: FileHandle) =
   ## Remove `wd` from tracking and start tracking dir events. Use when the file
   ## targeted by `wd` has been deleted or moved.
-  var dir: string
   let i = wl.map[wd]
   for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
     if fw.wd == wd:
       fw.wd = -1
-      dir = parentDir(fw.name)
       debug "purged: " & $fw.name & ", " & $wd
       break
   wl.map.del wd
   wl.incomplete.incl i
   wl.queue.excl i
-  inc wl.dirs[dir].misses
-  if wl.dirs[dir].wd < 0:
-    wl.dirs[dir].wd = inotify_add_watch(wl.fd, cstring(dir), IN_CREATE)
-    if wl.dirs[dir].wd == -1:
-      quit("inotify_add_watch failed on directory: " & dir & ", errno: " & $errno, errno)
-    debug "added watch on directory: " & dir
 
 proc mute(wl: var WatchList, i: int) =
   ## Remove inotify watch on wd pair `i` temporarily. Does not affect queue.
@@ -126,16 +107,6 @@ proc processQueue(wl: var WatchList) =
     replacer(wl.pairs[i].ifw.name, wl.pairs[i].ofw.name, wl.pairs[i].action)
     wl.unmute i
   clear wl.queue
-
-proc name(wl: WatchList, wd: FileHandle): string =
-  ## Get filename associated with `wd`.
-  if wl.map.hasKey(wd):
-    let i = wl.map[wd]
-    for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
-      if fw.wd == wd:
-        return $fw.name
-  else:
-    result = "unknown"
 
 proc run(list = false; args: seq[string]): int =
   if list:
@@ -177,9 +148,8 @@ proc run(list = false; args: seq[string]): int =
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
     for e in inotify_events(evs[0].addr, n):
       if inmask(e[].mask, IN_IGNORED):
-        debug e[].mask.toString
         continue
-      debug "file: " & wl.name(e[].wd) & ", mask: " & e[].mask.toString
+      debug "file: " & $e[].name & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
       if e[].wd in wl.map:
         if e[].mask == IN_MODIFY:
           let i = wl.map[e[].wd]
@@ -195,6 +165,13 @@ proc run(list = false; args: seq[string]): int =
             wl.queue.incl i
           processQueue wl
       elif inmask(e[].mask, IN_CREATE, IN_MOVED_TO, IN_MOVE_SELF):
+        if inmask(e[].mask, IN_MOVED_TO):
+          # some operations do not trigger IN_DELETE or IN_MOVE_SELF, we must
+          # monitor IN_MOVED_TO and check the filename.
+          for pair in wl.pairs:
+            for fw in [pair.ifw, pair.ofw]:
+              if Path($e[].name) == extractFilename(Path(fw.name)):
+                wl.purge fw.wd
         watch(wl)
         processQueue wl
     debug $wl
