@@ -1,0 +1,11 @@
+--- a/inotify.nim	2024-02-02 21:57:42.109744511 +0100
++++ b/patchedinotify.nim	2024-03-16 16:29:16.778422470 +0100
+@@ -19,7 +19,7 @@
+     mask* {.importc: "mask".}: uint32                  ## Watch mask.
+     cookie* {.importc: "cookie".}: uint32              ## Cookie to synchronize two events.
+     len* {.importc: "len".}: uint32                    ## Length (including NULs) of name.
+-    name* {.importc: "name".}: char                    ## Name.
++    name* {.importc: "name".}: cstring                 ## Name.
+ 
+ # Supported events suitable for MASK parameter of INOTIFY_ADD_WATCH.
+ const
