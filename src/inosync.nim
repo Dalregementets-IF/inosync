@@ -147,9 +147,10 @@ proc run(list = false; args: seq[string]): int =
   var evs = newSeq[byte](8192)
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
     for e in inotify_events(evs[0].addr, n):
-      if inmask(e[].mask, IN_IGNORED):
+      let evname = $e[].name
+      if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
-      debug "file: " & $e[].name & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
+      debug "file: " & evname & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
       if e[].wd in wl.map:
         if e[].mask == IN_MODIFY:
           let i = wl.map[e[].wd]
@@ -170,7 +171,7 @@ proc run(list = false; args: seq[string]): int =
           # monitor IN_MOVED_TO and check the filename.
           for pair in wl.pairs:
             for fw in [pair.ifw, pair.ofw]:
-              if Path($e[].name) == extractFilename(Path(fw.name)):
+              if Path(evname) == extractFilename(Path(fw.name)):
                 wl.purge fw.wd
         watch(wl)
         processQueue wl
