@@ -1,110 +1,124 @@
 import std / [inotify, intsets, paths, posix, strformat, strutils, tables]
 import inosync / [misc, replacers, sc]
 
+type
+  FIndex = range[0..1]
+  Watch = tuple[path: string, wd: FileHandle = -1]
+  WatchPair = tuple
+    ifw: Watch      ## infile
+    ofw: Watch      ## outfile
+    action: RepProc
+  WatchIndexes = tuple
+    pi: int     ## pairs index
+    fi: FIndex  ## file index: ifw (0) or ofw (1)
+
+  WatchList = object
+    fd: cint                          ## inotify
+    pairs: seq[WatchPair]
+    map: Table[string, WatchIndexes]  ## filename to pairs indexes
+    queue: IntSet                     ## pairs that are ready to receive work
+    dirs: Table[string, FileHandle]
+
 const
+  fidx0: FIndex = 0
+  fidx1: FIndex = 1
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
   watchMaskDir = IN_CREATE or IN_MOVED_TO
 
-type
-  WatchPair = object
-    ifw: tuple[name: string, wd: FileHandle = -1]
-    ofw: tuple[name: string, wd: FileHandle = -1]
-    action: RepProc
-  WatchList = object
-    fd: cint                     ## inotify
-    pairs: seq[WatchPair]
-    map: Table[FileHandle, int]  ## wd to pairs index
-    incomplete: IntSet           ## incomplete pairs (has unwatched file)
-    queue: IntSet                ## pairs that are ready to receive work
-    dirs: Table[string, FileHandle]
-
 var errno* {.importc, header: "<errno.h>".}: int
 
+proc `$`(wl: WatchList): string =
+  result = """
+(
+  fd: $1, queue: $2
+  dirs: $3
+  map: {
+""" % [$wl.fd, $wl.queue, $wl.dirs]
+  for k, v in wl.map.pairs:
+    result.add "    " & k & ": " & $v & "\n"
+  result.add "  }\n  pairs: {\n"
+  for pair in wl.pairs:
+    result.add "    ifw::" & $pair.ifw & " -> ofw::" & $pair.ofw & "\n"
+  result.add "  }\n)"
+
 proc parentDir(path: string): string = string(parentDir(Path(path)))
+proc extractFilename(path: string): string = string(extractFilename(Path(path)))
 
 proc newWatchList(): WatchList =
   result.fd = inotify_init()
   if result.fd < 0:
     quit("inotify_init failed, errno: " & $errno, errno)
 
+proc newWatchPair(infile, outfile: string, action: RepProc): WatchPair =
+  (ifw: (path: infile, wd: -1),
+   ofw: (path: outfile, wd: -1),
+   action: action)
+
 proc add(wl: var WatchList, infile, outfile: string, action: RepProc) =
-  wl.pairs.add WatchPair(ifw: (name: infile, wd: -1),
-                         ofw: (name: outfile, wd: -1),
-                         action: action)
-  wl.incomplete.incl wl.pairs.high
+  wl.pairs.add newWatchPair(infile, outfile, action)
+  let
+    ifshort = extractFilename(infile)
+    ofshort = extractFilename(outfile)
+  wl.map[ifshort] = (pi: wl.pairs.high, fi: fidx0)
+  wl.map[ofshort] = (pi: wl.pairs.high, fi: fidx1)
   for fw in [wl.pairs[^1].ifw, wl.pairs[^1].ofw]:
-    let dir = parentDir(fw.name)
+    let dir = parentDir(fw.path)
     if not wl.dirs.hasKey(dir):
       wl.dirs[dir] = -1
 
-proc watch(wl: var WatchList) =
-  ## Attempt to add inotify watch on any unwatched files and the dirs of any
-  ## unwatched files. Any pair that becomes watch complete is added to queue.
-  ## Watch on dir is removed if all tracked files inside are watched.
-  var completed: IntSet
-  for i in wl.incomplete.items:
-    for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
-      debug "processing watch on incomplete[" & $i & "]: " & $fw.name
-      if fw.wd < 0:
-        fw.wd = inotify_add_watch(wl.fd, cstring(fw.name), watchMaskFile)
-        if fw.wd >= 0:
-          debug "new watch: " & $fw.name & ", " & $fw.wd
-          wl.map[fw.wd] = i
-        else:
-          debug "could not watch: " & $fw.name & ", " & $fw.wd & ", errno: " & $errno
-      else:
-        debug "already watching: " & $fw.name & ", " & $fw.wd
-      if wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0:
-        completed.incl i
-  wl.queue = union(wl.queue, completed)
-  wl.incomplete = difference(wl.incomplete, completed)
-  for k in wl.dirs.keys:
-    if wl.dirs[k] == -1:
-      wl.dirs[k] = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
-      if wl.dirs[k] == -1:
-        quit("inotify_add_watch failed on directory: " & k & ", errno: " & $errno, errno)
-      debug "new watch on dir: " & k
+proc watch(wl: var WatchList, name: string) =
+  ## Attempt to add inotify watch on `name`.
+  let (pi, fi) = wl.map[name]
+  let fw =
+    if fi == fidx0:
+      addr wl.pairs[pi][fidx0]
+    else:
+      addr wl.pairs[pi][fidx1]
+  debug "processing watch on " & $fw[].path
+  if fw.wd < 0:
+    fw.wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
+    if fw.wd >= 0:
+      debug "new watch: " & $fw[].path & ", " & $fw[].wd
+    else:
+      debug "could not watch: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
+  else:
+    debug "already watching: " & $fw[].path & ", " & $fw[].wd
 
-proc purge(wl: var WatchList, wd: FileHandle) =
-  ## Remove `wd` from tracking and start tracking dir events. Use when the file
-  ## targeted by `wd` has been deleted or moved.
-  let i = wl.map[wd]
-  for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
-    if fw.wd == wd:
-      fw.wd = -1
-      debug "purged: " & $fw.name & ", " & $wd
-      break
-  wl.map.del wd
-  wl.incomplete.incl i
-  wl.queue.excl i
+proc purge(wl: var WatchList, name: string) =
+  ## Remove `name` from tracking. Use when `name` has been deleted or moved.
+  let (pi, fi) = wl.map[name]
+  let fw =
+    if fi == fidx0:
+      addr wl.pairs[pi][fidx0]
+    else:
+      addr wl.pairs[pi][fidx1]
+  discard inotify_rm_watch(wl.fd, fw[].wd)
+  debug "purged: " & $fw[].path & ", " & $fw[].wd
+  fw[].wd = -1
+  wl.queue.excl pi
 
 proc mute(wl: var WatchList, i: int) =
-  ## Remove inotify watch on wd pair `i` temporarily. Does not affect queue.
-  for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
-    discard inotify_rm_watch(wl.fd, fw.wd)
-    debug "muted: " & $fw.name & ", " & $fw.wd
-    wl.map.del fw.wd
-    fw.wd = -1
-    wl.incomplete.excl i
+  ## Remove inotify watch on wd pair `i` ofw temporarily. Does not affect queue.
+  let fw = addr wl.pairs[i].ofw
+  discard inotify_rm_watch(wl.fd, fw.wd)
+  debug "muted: " & $fw[].path & ", " & $fw[].wd
+  fw.wd = -1
 
 proc unmute(wl: var WatchList, i: int) =
-  ## Reinstate inotify watch on muted wd pair `i`. Does not affect queue.
-  for fw in [addr wl.pairs[i].ifw, addr wl.pairs[i].ofw]:
-    fw.wd = inotify_add_watch(wl.fd, cstring(fw.name), watchMaskFile)
-    if fw.wd >= 0:
-      debug "unmuted: " & $fw.name & ", " & $fw.wd
-      wl.map[fw.wd] = i
-    else:
-      debug "failed to unmute: " & $fw.name & ", " & $fw.wd & ", errno: " & $errno
-  if wl.pairs[i].ifw.wd < 0 or wl.pairs[i].ofw.wd < 0:
-    wl.incomplete.incl i
+  ## Reinstate inotify watch on muted wd pair `i` ofw. Does not affect queue.
+  let fw = addr wl.pairs[i].ofw
+  fw[].wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
+  if fw[].wd >= 0:
+    debug "unmuted: " & $fw[].path & ", " & $fw[].wd
+  else:
+    debug "failed to unmute: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
 
 proc processQueue(wl: var WatchList) =
   ## Execute registered action for any pair in queue.
   for i in wl.queue:
     wl.mute i
-    debug "processQueue: " & $wl.pairs[i].ifw.name & "->" & $wl.pairs[i].ofw.name
-    replacer(wl.pairs[i].ifw.name, wl.pairs[i].ofw.name, wl.pairs[i].action)
+    debug "processQueue: " & $wl.pairs[i].ifw.path & "->" & $wl.pairs[i].ofw.path
+    replacer(wl.pairs[i].ifw.path, wl.pairs[i].ofw.path, wl.pairs[i].action)
     wl.unmute i
   clear wl.queue
 
@@ -136,46 +150,50 @@ proc run(list = false; args: seq[string]): int =
     debug $wl
 
   lockdown()
-  watch wl
+
+  for k in wl.dirs.keys:
+    wl.dirs[k] = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
+    if wl.dirs[k] >= 0:
+      debug "new watch: " & k & ", " & $wl.dirs[k]
+    else:
+      stderr.writeLine "could not watch: " & $k & ", " & $wl.dirs[k]
+      return errno
+
+  for name in wl.map.keys:
+    wl.watch(name)
+
   for i in 0..wl.pairs.high:
-    # Process toggle-types even if pair is incomplete
-    if wl.pairs[i].action in toggles:
-      if wl.pairs[i].ofw.wd >= 0:
-        wl.queue.incl i
-      break
+    if (wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0) or
+        (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
+      wl.queue.incl i
   processQueue wl
   var evs = newSeq[byte](8192)
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
+    var printList: bool
     for e in inotify_events(evs[0].addr, n):
       let evname = $e[].name
       if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
       debug "file: " & evname & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
-      if e[].wd in wl.map:
-        if e[].mask == IN_MODIFY:
-          let i = wl.map[e[].wd]
-          if i notin wl.incomplete or
+      if wl.map.hasKey(evname):
+        printList = true
+        let (i, _) = wl.map[evname]
+        if inmask(e[].mask, IN_MODIFY):
+          if (wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0) or
               (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
             wl.queue.incl i
-          processQueue wl
         elif inmask(e[].mask, IN_DELETE_SELF, IN_MOVE_SELF):
-          let i = wl.map[e[].wd]
-          wl.purge e[].wd
-          watch wl
+          wl.purge(evname)
           if wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
             wl.queue.incl i
-          processQueue wl
-      elif inmask(e[].mask, IN_CREATE, IN_MOVED_TO, IN_MOVE_SELF):
-        if inmask(e[].mask, IN_MOVED_TO):
-          # some operations do not trigger IN_DELETE or IN_MOVE_SELF, we must
-          # monitor IN_MOVED_TO and check the filename.
-          for pair in wl.pairs:
-            for fw in [pair.ifw, pair.ofw]:
-              if Path(evname) == extractFilename(Path(fw.name)):
-                wl.purge fw.wd
-        watch(wl)
-        processQueue wl
-    debug $wl
+        elif inmask(e[].mask, IN_CREATE, IN_MOVED_TO):
+          wl.watch(evname)
+          if (wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0) or
+              (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
+            wl.queue.incl i
+    if printList:
+      debug $wl
+    processQueue wl
 
 when isMainModule:
   import cligen
