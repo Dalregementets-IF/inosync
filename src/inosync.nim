@@ -44,6 +44,8 @@ proc `$`(wl: WatchList): string =
 proc parentDir(path: string): string = string(parentDir(Path(path)))
 proc extractFilename(path: string): string = string(extractFilename(Path(path)))
 
+proc getName*(evt: ptr InotifyEvent): string = $cast[cstring](evt.name.addr)
+
 proc newWatchList(): WatchList =
   result.fd = inotify_init()
   if result.fd < 0:
@@ -171,7 +173,7 @@ proc run(list = false; args: seq[string]): int =
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
     var printList: bool
     for e in inotify_events(evs[0].addr, n):
-      let evname = $e[].name
+      let evname = e.getName
       if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
       debug "file: " & evname & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
