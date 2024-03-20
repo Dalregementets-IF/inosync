@@ -14,5 +14,5 @@ block:
   if e != 0:
     raise newException(Defect, "failed to patch: " & msg)
 
-{.hint: "Patching inotify.nim to fix `InotifyEvent.name`: char -> cstring "}
+{.hint: "Patching inotify.nim to fix `InotifyEvent.name`: char -> UncheckedArray[char]"}
 patchFile("stdlib", "inotify", "inosync" / patched)
