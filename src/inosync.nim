@@ -2,28 +2,7 @@ import std / [inotify, intsets, logging, paths, posix, strformat, strutils,
               tables]
 import inosync / [misc, replacers, sc]
 
-type
-  FIndex = range[0..1]
-  Watch = tuple[path: string, wd: FileHandle = -1]
-  WatchPair = tuple
-    ifw: Watch      ## infile
-    ofw: Watch      ## outfile
-    action: RepProc
-  WatchIndexes = tuple
-    pi: int     ## pairs index
-    fi: FIndex  ## file index: ifw (0) or ofw (1)
-
-  WatchList = object
-    fd: cint                              ## inotify
-    pairs: seq[WatchPair]
-    map: Table[string, WatchIndexes]      ## filename to pairs indexes
-    wmap: Table[FileHandle, WatchIndexes] ## wd to pairs indexes
-    queue: IntSet                         ## pairs that are ready for processing
-    dirs: Table[string, FileHandle]
-
 const
-  fidx0: FIndex = 0
-  fidx1: FIndex = 1
   watchMaskFile = IN_MODIFY or IN_DELETE_SELF or IN_MOVE_SELF
   watchMaskDir = IN_CREATE or IN_MOVED_TO
 
@@ -130,7 +109,7 @@ proc processQueue(wl: var WatchList) =
   for i in wl.queue:
     wl.mute i
     debug "processQueue: " & $wl.pairs[i].ifw.path & "->" & $wl.pairs[i].ofw.path
-    replacer(wl.pairs[i].ifw.path, wl.pairs[i].ofw.path, wl.pairs[i].action)
+    replacer(addr wl.pairs[i])
     wl.unmute i
   clear wl.queue
 

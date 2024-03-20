@@ -18,11 +18,11 @@ when defined(useFuthark) or defined(useFutharkForPoppler):
 else:
   include "../../futhark_poppler.nim"
 
-type RepProc* = proc (ifn: string, tfile: File): bool {.gcsafe, nimcall.}
-
 {.experimental: "codeReordering".}
 
 const
+  beginMark* = "<!-- INOSYNC BEGIN -->"
+  endMark* = "<!-- INOSYNC END -->"
   pictograms = ["unknown", "weightlifting", "biathlon", "modern_pentathlon",
                 "fencing", "athletics", "shooting", "cross_country_skiing",
                 "swimming", "triathlon"]
@@ -67,7 +67,7 @@ proc getPictogram(sport: string): string =
 
 assert pictograms.len >= 10
 
-proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
+proc replacer*(wp: ptr WatchPair) {.gcsafe.} =
   ## Replace data in file.
   ##
   ## `ifn`: source file.
@@ -78,9 +78,15 @@ proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
     tfile, ofile: File
     tpath: string
     tremove: bool
-  debug "replacer starting.."
-  if not open(ofile, $ofn, fmRead):
-    warn "could not open ofile: " & $ofn
+  if getHandlers()[0].levelThreshold == lvlDebug:
+    var procName: string
+    for k, v in actions:
+      if v[0] == wp[].action:
+        procName = k
+        break
+    debug "replacer starting using action: " & procName
+  if not open(ofile, $wp[].ofw.path, fmRead):
+    warn "could not open ofile: " & $wp[].ofw.path
     return
   try:
     (tfile, tpath) = createTempFile("inosync", "")
@@ -100,11 +106,11 @@ proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
 
       if beginPos < 0 or endPos < 0:
         warn "could not determine section to replace in ofile ($1, $2): $3" % [
-            $beginPos, $endPos, $ofn]
+            $beginPos, $endPos, $wp[].ofw.path]
         tremove = true
         return
 
-      if not repFunc(ifn, tfile):
+      if not wp[].action(wp[].ifw.path, tfile):
         return
 
       tfile.writeLine oline
@@ -116,7 +122,7 @@ proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
         removeFile tpath
   finally:
     close ofile
-  moveFile(tpath, $ofn)
+  moveFile(tpath, $wp[].ofw.path)
 
 proc repStyrelse*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for creating styrelse.html <table> rows.

@@ -1,8 +1,28 @@
-import std / [bitops, inotify]
+import std / [bitops, inotify, intsets, tables]
+
+type
+  RepProc* = proc (ifn: string, tfile: File): bool {.gcsafe, nimcall.}
+  FIndex* = range[0..1]
+  Watch* = tuple[path: string, wd: FileHandle = -1]
+  WatchPair* = tuple
+    ifw: Watch      ## infile
+    ofw: Watch      ## outfile
+    action: RepProc
+  WatchIndexes* = tuple
+    pi: int     ## pairs index
+    fi: FIndex  ## file index: ifw (0) or ofw (1)
+
+  WatchList* = object
+    fd*: cint                              ## inotify
+    pairs*: seq[WatchPair]
+    map*: Table[string, WatchIndexes]      ## filename to pairs indexes
+    wmap*: Table[FileHandle, WatchIndexes] ## wd to pairs indexes
+    queue*: IntSet                         ## pairs that are ready for processing
+    dirs*: Table[string, FileHandle]
 
 const
-  beginMark* = "<!-- INOSYNC BEGIN -->"
-  endMark* = "<!-- INOSYNC END -->"
+  fidx0*: FIndex = 0
+  fidx1*: FIndex = 1
 
 proc inmask*[T: SomeInteger](mask: T, events: varargs[T]): bool =
   for y in events:
