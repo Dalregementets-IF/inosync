@@ -13,10 +13,11 @@ type
     fi: FIndex  ## file index: ifw (0) or ofw (1)
 
   WatchList = object
-    fd: cint                          ## inotify
+    fd: cint                              ## inotify
     pairs: seq[WatchPair]
-    map: Table[string, WatchIndexes]  ## filename to pairs indexes
-    queue: IntSet                     ## pairs that are ready to receive work
+    map: Table[string, WatchIndexes]      ## filename to pairs indexes
+    wmap: Table[FileHandle, WatchIndexes] ## wd to pairs indexes
+    queue: IntSet                         ## pairs that are ready for processing
     dirs: Table[string, FileHandle]
 
 const
@@ -36,6 +37,9 @@ proc `$`(wl: WatchList): string =
 """ % [$wl.fd, $wl.queue, $wl.dirs]
   for k, v in wl.map.pairs:
     result.add "    " & k & ": " & $v & "\n"
+  result.add "  }\n  wmap: {\n"
+  for k, v in wl.wmap.pairs:
+    result.add "    " & $k & ": " & $v & "\n"
   result.add "  }\n  pairs: {\n"
   for pair in wl.pairs:
     result.add "    ifw::" & $pair.ifw & " -> ofw::" & $pair.ofw & "\n"
@@ -77,9 +81,10 @@ proc watch(wl: var WatchList, name: string) =
     else:
       addr wl.pairs[pi][fidx1]
   debug "processing watch on " & $fw[].path
-  if fw.wd < 0:
-    fw.wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
-    if fw.wd >= 0:
+  if fw[].wd < 0:
+    fw[].wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
+    if fw[].wd >= 0:
+      wl.wmap[fw[].wd] = (pi, fi)
       debug "new watch: " & $fw[].path & ", " & $fw[].wd
     else:
       debug "could not watch: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
@@ -96,6 +101,7 @@ proc purge(wl: var WatchList, name: string) =
       addr wl.pairs[pi][fidx1]
   discard inotify_rm_watch(wl.fd, fw[].wd)
   debug "purged: " & $fw[].path & ", " & $fw[].wd
+  wl.wmap.del fw[].wd
   fw[].wd = -1
   wl.queue.excl pi
 
@@ -104,6 +110,7 @@ proc mute(wl: var WatchList, i: int) =
   let fw = addr wl.pairs[i].ofw
   discard inotify_rm_watch(wl.fd, fw.wd)
   debug "muted: " & $fw[].path & ", " & $fw[].wd
+  wl.wmap.del fw[].wd
   fw.wd = -1
 
 proc unmute(wl: var WatchList, i: int) =
@@ -111,6 +118,8 @@ proc unmute(wl: var WatchList, i: int) =
   let fw = addr wl.pairs[i].ofw
   fw[].wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
   if fw[].wd >= 0:
+    let (pi, fi) = wl.map[extractFilename(fw[].path)]
+    wl.wmap[fw[].wd] = (pi, fi)
     debug "unmuted: " & $fw[].path & ", " & $fw[].wd
   else:
     debug "failed to unmute: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
@@ -169,6 +178,9 @@ proc run(list = false; args: seq[string]): int =
         (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
       wl.queue.incl i
   processQueue wl
+
+  debug $wl
+
   var evs = newSeq[byte](8192)
   while (let n = read(wl.fd, evs[0].addr, 8192); n) > 0:
     var printList: bool
@@ -176,23 +188,40 @@ proc run(list = false; args: seq[string]): int =
       let evname = e.getName
       if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
-      debug "file: " & evname & "[cookie:" & $e[].cookie & "], event: " & e[].mask.toString
-      if wl.map.hasKey(evname):
+      debug "file: $1[$2]<cookie:$3>, event: $4" % [evname, $e[].wd, $e[].cookie, e[].mask.toString]
+      if wl.wmap.hasKey(e[].wd) or wl.map.hasKey(evname):
         printList = true
-        let (i, _) = wl.map[evname]
+        var pi, fi: int
+        if wl.wmap.hasKey(e[].wd):
+          debug "using wmap"
+          (pi, fi) = wl.wmap[e[].wd]
+        else:
+          debug "using map"
+          (pi, fi) = wl.map[evname]
+
+        let
+          fw =
+            if fi == fidx0:
+              addr wl.pairs[pi][fidx0]
+            else:
+              addr wl.pairs[pi][fidx1]
+          fname = extractFilename(fw[].path)
+
         if inmask(e[].mask, IN_MODIFY):
-          if (wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0) or
-              (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
-            wl.queue.incl i
-        elif inmask(e[].mask, IN_DELETE_SELF, IN_MOVE_SELF):
-          wl.purge(evname)
-          if wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles:
-            wl.queue.incl i
+          if (wl.pairs[pi].ifw.wd >= 0 and wl.pairs[pi].ofw.wd >= 0) or
+              (wl.pairs[pi].ofw.wd >= 0 and wl.pairs[pi].action in toggles):
+            wl.queue.incl pi
         elif inmask(e[].mask, IN_CREATE, IN_MOVED_TO):
-          wl.watch(evname)
-          if (wl.pairs[i].ifw.wd >= 0 and wl.pairs[i].ofw.wd >= 0) or
-              (wl.pairs[i].ofw.wd >= 0 and wl.pairs[i].action in toggles):
-            wl.queue.incl i
+          if fw[].wd >= 0:
+            wl.purge(fname)
+          wl.watch(fname)
+          if (wl.pairs[pi].ifw.wd >= 0 and wl.pairs[pi].ofw.wd >= 0) or
+              (wl.pairs[pi].ofw.wd >= 0 and wl.pairs[pi].action in toggles):
+            wl.queue.incl pi
+        elif inmask(e[].mask, IN_DELETE_SELF, IN_MOVE_SELF):
+          wl.purge(fname)
+          if wl.pairs[pi].ofw.wd >= 0 and wl.pairs[pi].action in toggles:
+            wl.queue.incl pi
     if printList:
       debug $wl
     processQueue wl
