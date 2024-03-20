@@ -22,6 +22,7 @@ when not defined(noseccomp):
     ctx.add_rule(Allow, "newfstatat")
     ctx.add_rule(Allow, "inotify_init")          # initialize inotify instance
     ctx.add_rule(Allow, "inotify_init1")         # initialize inotify instance
+    ctx.add_rule(Allow, "readlink")              # read value of symbolic link
     ctx.add_rule(Allow, "write")                 # to file descriptor
     ctx.add_rule(Allow, "inotify_add_watch")     # add watch to initialized inotify instance
     ctx.add_rule(Allow, "inotify_rm_watch")      # remove existing watch from inotify instance

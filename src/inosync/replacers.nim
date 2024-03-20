@@ -1,4 +1,4 @@
-import std / [strutils, tables, tempfiles]
+import std / [logging, strutils, tables, tempfiles]
 import std/private/osfiles
 import nmark
 
@@ -78,8 +78,9 @@ proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
     tfile, ofile: File
     tpath: string
     tremove: bool
+  debug "replacer starting.."
   if not open(ofile, $ofn, fmRead):
-    debug "could not open ofile: " & $ofn
+    warn "could not open ofile: " & $ofn
     return
   try:
     (tfile, tpath) = createTempFile("inosync", "")
@@ -98,7 +99,7 @@ proc replacer*(ifn, ofn: string, repFunc: RepProc) {.gcsafe.} =
           break
 
       if beginPos < 0 or endPos < 0:
-        debug "could not determine section to replace in ofile ($1, $2): $3" % [
+        warn "could not determine section to replace in ofile ($1, $2): $3" % [
             $beginPos, $endPos, $ofn]
         tremove = true
         return
@@ -148,7 +149,7 @@ proc repStyrelse*(ifn: string, tfile: File): bool {.gcsafe.} =
         tfile.writeLine row
     result = true
   else:
-    debug "could not open ifile: " & ifn
+    warn "could not open ifile: " & ifn
 
 proc repKallelse*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for toggling promobox <div> with link to 'kallelse.pdf'
@@ -162,7 +163,7 @@ proc repKallelse*(ifn: string, tfile: File): bool {.gcsafe.} =
     # `PDF document is damaged` also falls under G_FILE_ERROR_NOENT (code 4)
     # but missing file is expected.
     if error.code != 4 and error.message != "No such file or directory":
-      echo "failed to load PDF: " & $error.message & ", [" & $ $error.code & "]"
+      warn "failed to load PDF: " & $error.message & ", [" & $ $error.code & "]"
     gerrorfree(error)
     return true
   defer: gobjectunref(doc)
@@ -194,7 +195,7 @@ proc repAlert(ifn: string, tfile: File, class: string): bool {.gcsafe.} =
   if fileExists(ifn):
     var ifile: File
     if not open(ifile, ifn, fmRead):
-      debug "could not open ifile: " & ifn
+      warn "could not open ifile: " & ifn
       return false
     tfile.write """<div class="alert $1">\n<p class="inner">\n""" % class
     var iline: string
@@ -220,7 +221,7 @@ proc repPlain*(ifn: string, tfile: File): bool {.gcsafe.} =
       tfile.writeLine iline
     result = true
   else:
-    debug "could not open ifile: " & ifn
+    warn "could not open ifile: " & ifn
 
 proc repMarkdown*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer creating HTML from markdown and writing it to file.
@@ -230,7 +231,7 @@ proc repMarkdown*(ifn: string, tfile: File): bool {.gcsafe.} =
     tfile.write markdown(md)
     result = true
   else:
-    debug "could not open ifile: " & ifn
+    warn "could not open ifile: " & ifn
 
 proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for creating tavlingar.html <div> sets.
@@ -264,7 +265,7 @@ proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
         tfile.writeLine item
     result = true
   else:
-    debug "could not open ifile: " & ifn
+    warn "could not open ifile: " & ifn
 
 const toggles*: array[3, RepProc] = [repKallelse, repAlertWarn, repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.

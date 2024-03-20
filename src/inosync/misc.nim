@@ -30,7 +30,3 @@ proc toString*(event: uint32): string =
     else: "UNKNOWN[" & $event & "]"
   if inmask(event, IN_ISDIR):
     result.add "|IN_ISDIR"
-
-template debug*(msg: string) =
-  when not defined(release):
-    echo msg

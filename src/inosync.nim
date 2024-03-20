@@ -1,4 +1,5 @@
-import std / [inotify, intsets, paths, posix, strformat, strutils, tables]
+import std / [inotify, intsets, logging, paths, posix, strformat, strutils,
+              tables]
 import inosync / [misc, replacers, sc]
 
 type
@@ -85,11 +86,11 @@ proc watch(wl: var WatchList, name: string) =
     fw[].wd = inotify_add_watch(wl.fd, cstring(fw[].path), watchMaskFile)
     if fw[].wd >= 0:
       wl.wmap[fw[].wd] = (pi, fi)
-      debug "new watch: " & $fw[].path & ", " & $fw[].wd
+      info "new watch: " & $fw[].path & ", " & $fw[].wd
     else:
-      debug "could not watch: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
+      error "could not watch: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
   else:
-    debug "already watching: " & $fw[].path & ", " & $fw[].wd
+    error "already watching: " & $fw[].path & ", " & $fw[].wd
 
 proc purge(wl: var WatchList, name: string) =
   ## Remove `name` from tracking. Use when `name` has been deleted or moved.
@@ -100,7 +101,7 @@ proc purge(wl: var WatchList, name: string) =
     else:
       addr wl.pairs[pi][fidx1]
   discard inotify_rm_watch(wl.fd, fw[].wd)
-  debug "purged: " & $fw[].path & ", " & $fw[].wd
+  info "purged: " & $fw[].path & ", " & $fw[].wd
   wl.wmap.del fw[].wd
   fw[].wd = -1
   wl.queue.excl pi
@@ -109,7 +110,7 @@ proc mute(wl: var WatchList, i: int) =
   ## Remove inotify watch on wd pair `i` ofw temporarily. Does not affect queue.
   let fw = addr wl.pairs[i].ofw
   discard inotify_rm_watch(wl.fd, fw.wd)
-  debug "muted: " & $fw[].path & ", " & $fw[].wd
+  info "muted: " & $fw[].path & ", " & $fw[].wd
   wl.wmap.del fw[].wd
   fw.wd = -1
 
@@ -120,9 +121,9 @@ proc unmute(wl: var WatchList, i: int) =
   if fw[].wd >= 0:
     let (pi, fi) = wl.map[extractFilename(fw[].path)]
     wl.wmap[fw[].wd] = (pi, fi)
-    debug "unmuted: " & $fw[].path & ", " & $fw[].wd
+    info "unmuted: " & $fw[].path & ", " & $fw[].wd
   else:
-    debug "failed to unmute: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
+    error "failed to unmute: " & $fw[].path & ", " & $fw[].wd & ", errno: " & $errno
 
 proc processQueue(wl: var WatchList) =
   ## Execute registered action for any pair in queue.
@@ -133,7 +134,7 @@ proc processQueue(wl: var WatchList) =
     wl.unmute i
   clear wl.queue
 
-proc run(list = false; args: seq[string]): int =
+proc run(level = lvlWarn; list = false; args: seq[string]): int =
   if list:
     var x: seq[string]
     for k, v in actions.pairs:
@@ -144,6 +145,8 @@ proc run(list = false; args: seq[string]): int =
   if args.len < 1:
     echo "nothing to do"
     return
+
+  addHandler newConsoleLogger(level, "[$levelid] $datetime ", false, lvlDebug)
 
   var wl = newWatchList()
   block process_args:
@@ -156,7 +159,7 @@ proc run(list = false; args: seq[string]): int =
       let act = getAction(x[0])
       argsets.add (x[1], x[2], act)
     for p in argsets.items:
-      debug "adding: " & $p[0] & "->" & $p[1]
+      info "adding: " & $p[0] & "->" & $p[1]
       wl.add(p[0], p[1], p[2])
     debug $wl
 
@@ -165,9 +168,9 @@ proc run(list = false; args: seq[string]): int =
   for k in wl.dirs.keys:
     wl.dirs[k] = inotify_add_watch(wl.fd, cstring(k), watchMaskDir)
     if wl.dirs[k] >= 0:
-      debug "new watch: " & k & ", " & $wl.dirs[k]
+      info "new watch: " & k & ", " & $wl.dirs[k]
     else:
-      stderr.writeLine "could not watch: " & $k & ", " & $wl.dirs[k]
+      error "could not watch: " & $k & ", " & $wl.dirs[k]
       return errno
 
   for name in wl.map.keys:
@@ -188,7 +191,7 @@ proc run(list = false; args: seq[string]): int =
       let evname = e.getName
       if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
-      debug "event: $1, wd: $2, filename: '$3', cookie: $4" % [e[].mask.toString, $e[].wd, evname, $e[].cookie]
+      info "event: $1, wd: $2, filename: '$3', cookie: $4" % [e[].mask.toString, $e[].wd, evname, $e[].cookie]
       if wl.wmap.hasKey(e[].wd) or wl.map.hasKey(evname):
         printList = true
         var pi, fi: int
@@ -250,5 +253,6 @@ git hash: $5$6""" % [progName, progVer, CompileDate, CompileTime, gitHash, dirty
   dispatchCf run, cmdName = progName, cf = clCfg, noHdr = true,
     usage = progUse & "\n\nOptions(opt-arg sep :|=|spc):\n$options",
     help = {
-      "list": "list available actions"
+      "list": "list available actions",
+      "level": "log level"
     }
