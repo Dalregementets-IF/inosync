@@ -123,32 +123,32 @@ proc repStyrelse*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## contact information with <br> separation; contact info with '@' creates
   ## mailto link. Rows starting with ';' or '#' are ignored.
   var ifile: File
-  if not open(ifile, ifn, fmRead):
-    debug "could not open ifile: " & ifn
-    return false
-  var iline: string
-  block headers:
+  if open(ifile, ifn, fmRead):
+    var iline: string
+    block headers:
+      while ifile.readLine(iline):
+        if not iline.startsWith("#") and not iline.startsWith(";"):
+          let row = "<tr><th>" & iline.replace("\t", "</th><th>") & "</th></tr>"
+          tfile.writeLine row
+          break headers
     while ifile.readLine(iline):
       if not iline.startsWith("#") and not iline.startsWith(";"):
-        let row = "<tr><th>" & iline.replace("\t", "</th><th>") & "</th></tr>"
+        var
+          fields = iline.split('\t')
+          tmp: seq[string]
+        while fields.len < 3:
+          fields.add ""
+        for part in fields[2].split("<br>"):
+          if '@' in part:
+            tmp.add "<a href=\"mailto:$1\" title=\"Mejla $2\">$1</a>" % [part, fields[0]]
+          else:
+            tmp.add part
+        fields[2] = tmp.join("<br>")
+        let row = "<tr><td>" & fields[0..2].join("</td><td>") & "</td></tr>"
         tfile.writeLine row
-        break headers
-  while ifile.readLine(iline):
-    if not iline.startsWith("#") and not iline.startsWith(";"):
-      var
-        fields = iline.split('\t')
-        tmp: seq[string]
-      while fields.len < 3:
-        fields.add ""
-      for part in fields[2].split("<br>"):
-        if '@' in part:
-          tmp.add "<a href=\"mailto:$1\" title=\"Mejla $2\">$1</a>" % [part, fields[0]]
-        else:
-          tmp.add part
-      fields[2] = tmp.join("<br>")
-      let row = "<tr><td>" & fields[0..2].join("</td><td>") & "</td></tr>"
-      tfile.writeLine row
-  return true
+    result = true
+  else:
+    debug "could not open ifile: " & ifn
 
 proc repKallelse*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for toggling promobox <div> with link to 'kallelse.pdf'
@@ -213,44 +213,40 @@ proc repAlertInfo*(ifn: string, tfile: File): bool {.gcsafe.} =
 
 proc repPlain*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer simply writing lines to file as is.
-  if fileExists(ifn):
-    var ifile: File
-    if not open(ifile, ifn, fmRead):
-      debug "could not open ifile: " & ifn
-      return false
+  var ifile: File
+  if open(ifile, ifn, fmRead):
     var iline: string
     while ifile.readLine(iline):
       tfile.writeLine iline
-  return true
+    result = true
+  else:
+    debug "could not open ifile: " & ifn
 
 proc repMarkdown*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer creating HTML from markdown and writing it to file.
-  if fileExists(ifn):
-    var ifile: File
-    if not open(ifile, ifn, fmRead):
-      debug "could not open ifile: " & ifn
-      return false
+  var ifile: File
+  if open(ifile, ifn, fmRead):
     let md = readAll ifile
     tfile.write markdown(md)
-  return true
+    result = true
+  else:
+    debug "could not open ifile: " & ifn
 
 proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
   ## Replacer specialized for creating tavlingar.html <div> sets.
   ## Enforces 6 fields.
   var ifile: File
-  if not open(ifile, ifn, fmRead):
-    debug "could not open ifile: " & ifn
-    return false
-  var iline: string
-  while ifile.readLine(iline):
-    if not iline.startsWith("#") and not iline.startsWith(";") and iline != "":
-      var
-        fields = iline.split('\t')
-      while fields.len < 3:
-        fields.add ""
-      let
-        pic = getPictogram(fields[3])
-        item = """
+  if open(ifile, ifn, fmRead):
+    var iline: string
+    while ifile.readLine(iline):
+      if not iline.startsWith("#") and not iline.startsWith(";") and iline != "":
+        var
+          fields = iline.split('\t')
+        while fields.len < 3:
+          fields.add ""
+        let
+          pic = getPictogram(fields[3])
+          item = """
   <div class="competition-row">
     <div>
       <h2><div class="pictogram pg-$7"></div><a href="$6" target="_blank">$1</a></h2>
@@ -265,8 +261,10 @@ proc repTavlingar*(ifn: string, tfile: File): bool {.gcsafe.} =
     </div>
   </div>
 """ % [fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], pic]
-      tfile.writeLine item
-  return true
+        tfile.writeLine item
+    result = true
+  else:
+    debug "could not open ifile: " & ifn
 
 const toggles*: array[3, RepProc] = [repKallelse, repAlertWarn, repAlertInfo]
   ## Replacer procs that show or hide content based on if file `ifn` exists.
