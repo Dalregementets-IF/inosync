@@ -188,7 +188,7 @@ proc run(list = false; args: seq[string]): int =
       let evname = e.getName
       if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
         continue
-      debug "file: $1[$2]<cookie:$3>, event: $4" % [evname, $e[].wd, $e[].cookie, e[].mask.toString]
+      debug "event: $1, wd: $2, filename: '$3', cookie: $4" % [e[].mask.toString, $e[].wd, evname, $e[].cookie]
       if wl.wmap.hasKey(e[].wd) or wl.map.hasKey(evname):
         printList = true
         var pi, fi: int
