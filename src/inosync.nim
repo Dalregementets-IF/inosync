@@ -168,7 +168,7 @@ proc run(level = lvlWarn; list = false; args: seq[string]): int =
     var printList: bool
     for e in inotify_events(evs[0].addr, n):
       let evname = e.getName
-      if inmask(e[].mask, IN_IGNORED) or evname[^1] == '~' or evname[0] == '.':
+      if inmask(e[].mask, IN_IGNORED) or (evname.len > 0 and (evname[^1] == '~' or evname[0] == '.')):
         continue
       info "event: $1, wd: $2, filename: '$3', cookie: $4" % [e[].mask.toString, $e[].wd, evname, $e[].cookie]
       if wl.wmap.hasKey(e[].wd) or wl.map.hasKey(evname):
