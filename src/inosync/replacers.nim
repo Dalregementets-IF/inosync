@@ -135,9 +135,10 @@ proc repStyrelse*(ifn: string, tfile: File): bool {.gcsafe.} =
     block headers:
       while ifile.readLine(iline):
         if not iline.startsWith("#") and not iline.startsWith(";"):
-          let row = "<tr><th>" & iline.replace("\t", "</th><th>") & "</th></tr>"
+          let row = "<thead><tr><th>" & iline.replace("\t", "</th><th>") & "</th></tr></thead>"
           tfile.writeLine row
           break headers
+    tfile.writeLine "<tbody>"
     while ifile.readLine(iline):
       if not iline.startsWith("#") and not iline.startsWith(";"):
         var
@@ -153,6 +154,7 @@ proc repStyrelse*(ifn: string, tfile: File): bool {.gcsafe.} =
         fields[2] = tmp.join("<br>")
         let row = "<tr><td>" & fields[0..2].join("</td><td>") & "</td></tr>"
         tfile.writeLine row
+    tfile.writeLine "</tbody>"
     result = true
   else:
     warn "could not open ifile: " & ifn
