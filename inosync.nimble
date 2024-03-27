@@ -1,5 +1,5 @@
 # Package
-version       = "1.3.1"
+version       = "1.3.2"
 author        = "Tobias Dély"
 description   = "monitor pairs of in/out files and sync data according to given action"
 license       = "MIT"
