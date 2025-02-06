@@ -1,5 +1,5 @@
 # Package
-version       = "1.3.2"
+version       = "1.3.3"
 author        = "Tobias Dély"
 description   = "monitor pairs of in/out files and sync data according to given action"
 license       = "MIT"
@@ -28,4 +28,4 @@ task build, "Create a development build":
 
 task release, "Build for release":
   exec "mkdir -p bin"
-  exec "nim c -d:release -d:danger --opt:speed -d:useMalloc -o:bin/inosync src/inosync.nim"
+  exec "nim c -d:release -d:noseccomp -d:danger --opt:speed -d:useMalloc -o:bin/inosync src/inosync.nim"
