@@ -185,7 +185,7 @@ proc repKallelse*(ifn: string, tfile: File): bool {.gcsafe.} =
   for line in split($text, '\n'):
     if title == "" and "Kallelse" in line:
       title = line
-    elif desc == "" and "Mötet" in line:
+    elif desc == "" and ("Mötet " in line or "Härmed" in line):
       desc = line
     if title != "" and desc != "":
       break
