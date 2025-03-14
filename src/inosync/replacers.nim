@@ -1,4 +1,4 @@
-import std / [logging, strutils, tables, tempfiles]
+import std / [logging, os, strutils, tables, tempfiles]
 import std/private/osfiles
 import nmark
 
@@ -90,6 +90,7 @@ proc replacer*(wp: ptr WatchPair) {.gcsafe.} =
     return
   try:
     (tfile, tpath) = createTempFile("inosync", "")
+    inclFilePermissions(tpath, {fpGroupRead, fpOthersRead})
     try:
       var
         oline: string
